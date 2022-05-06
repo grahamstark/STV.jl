@@ -72,7 +72,7 @@ function load_profiles( filename :: String ) :: NamedTuple
     for r in num_profiles+3:num_raw_rows-1
         n += 1
         name = split( raw[r,1], " ")
-        c = Candidate( n, name[1], name[2], "DK")
+        c = Candidate( n, name[2], name[1], "DK")
         push!( candidates, c )
     end
     println( "num_candidates=$num_candidates num_seats=$num_seats candidates=$candidates")
@@ -230,7 +230,7 @@ function do_election( fname :: String ) :: Tuple
     return candidates,wardname,quota,votes[:,1:stage],transfers[:,:,1:stage],elected[:,1:stage],excluded[:,1:stage],seats,stage
 end
 
-function make_src_dest_weights( candidates, votes, weights, elected, excluded, stages )
+function make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
     src = []
     dest = []
     weights = []
@@ -261,6 +261,23 @@ function make_src_dest_weights( candidates, votes, weights, elected, excluded, s
     end
     weights = ones( size( src))
     return src, dest, weights
+end
+
+function make_labels( candidates, dest )
+    labels = []
+    for n in dest
+        i = n % 1000
+        push!( labels, candidates[i].sname )             
+
+    end
+    labels 
+end
+
+function make_sankey( candidates, votes, transfers, elected, excluded, stages)
+    src, dest, weights = 
+    p = sankey( src, dest, weights )
+
+    return p
 end
 
 end

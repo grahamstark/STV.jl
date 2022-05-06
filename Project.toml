@@ -1,0 +1,19 @@
+name = "STV"
+uuid = "b3608fac-af95-49e1-a94b-a8c38f98ec41"
+authors = ["Graham Stark"]
+version = "0.1.0"
+
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+SankeyPlots = "8fd88ec8-d95c-41fc-b299-05f2225f2cc5"
+XLSX = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

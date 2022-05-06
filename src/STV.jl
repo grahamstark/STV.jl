@@ -227,7 +227,40 @@ function do_election( fname :: String ) :: Tuple
     println( elected )
     @assert all_elected == seats
     # @assert (sum( elected ) + sum( excluded )) == num_candidates
-    return candidates,wardname,quota,votes[:,1:stage],transfers[:,:,1:stage],elected[:,1:stage],excluded[:,1:stage],seats
+    return candidates,wardname,quota,votes[:,1:stage],transfers[:,:,1:stage],elected[:,1:stage],excluded[:,1:stage],seats,stage
+end
+
+function make_src_dest_weights( candidates, votes, weights, elected, excluded, stages )
+    src = []
+    dest = []
+    weights = []
+    nc = size( candidates)[1]
+    ex = elected .| excluded
+    nleft = nc-1
+
+    for s in 1:stages
+        m = 1000*s
+        for i in 1:nc
+            if ex[i,s]
+                if s < stages
+                    nleft -= 1 
+                    kk = fill( m+i, nleft )
+                    push!( src, kk... )
+                    println( "stage=$s; left=$(nleft) kk = $kk")
+                    for j in 1:nc # add targets for next time
+                        if ! (any(ex[j,1:s+1])) # stiil there next time
+                            push!( dest, j+m+1000)
+                        end
+                    end
+                end
+            else
+                push!( src, i+m )
+                push!( dest, i+m+1000 )
+            end
+        end
+    end
+    weights = ones( size( src))
+    return src, dest, weights
 end
 
 end

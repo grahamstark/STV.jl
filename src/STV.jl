@@ -11,7 +11,7 @@ using DataFrames
 
 MAX_STAGES = 50
 
-export do_election
+export do_election,make_labels,make_sankey
 
 mutable struct Candidate
     pos   :: Int
@@ -233,39 +233,63 @@ end
 function make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
     src = []
     dest = []
-    weights = []
-    nc = size( candidates)[1]
-    ex = elected .| excluded
-    nleft = nc-1
 
-    for s in 1:stages
-        m = 1000*s
-        for i in 1:nc
-            if ex[i,s]
-                if s < stages
-                    nleft -= 1 
-                    kk = fill( m+i, nleft )
-                    push!( src, kk... )
-                    println( "stage=$s; left=$(nleft) kk = $kk")
-                    for j in 1:nc # add targets for next time
-                        if ! (any(ex[j,1:s+1])) # stiil there next time
-                            push!( dest, j+m+1000)
-                        end
+
+    function addone( donor::Int, donee::Int, stage::Int )
+        m = stage * 1000
+        push!( src, donor + m )
+        push!( dest, donee + m + 1000 )
+    end
+    
+
+    weights = []
+    ncs = size( candidates)[1]
+    ex = elected .| excluded
+    nleft = ncs
+
+    for stage in 1:stages
+        for cno in 1:ncs
+            if excluded[cno,stage] || elected[cno,stage] # distribute votes of cand
+                for dno in 1:ncs  
+                    if ! any(excluded[dno,1:stage+1])
+                        addone(cno,dno,stage) 
                     end
                 end
             else
-                push!( src, i+m )
-                push!( dest, i+m+1000 )
+            
+                if ! any(excluded[cno,1:stage]) # this candidate carries on..
+                    addone( cno, cno, stage )
+                end 
             end
-        end
-    end
-    weights = ones( size( src))
+                #=
+                if s < stages-1
+                    nleft -= 1 
+
+                    nl = elected[i,s] ? nleft+1 : nleft
+                    kk = fill( m+i, nl )
+                    push!( src, kk... )
+                    println( "stage=$s; left=$(nleft) kk = $kk")
+                    for j in 1:nc # add targets 
+                         # still there next time
+                            push!( dest, j+m+1000 )
+                        end
+                    end
+                end
+                =#
+            #elseif ! any( excluded[i,1:s] )
+                # push!( src, i+m  )#+m )
+                # push!( dest, i+m+1000 )# +m+1000 )
+      #      end
+        end # candidates
+    end # stages
+    @assert size( src ) == size( dest )
+    weights = ones( size( src ))
     return src, dest, weights
 end
 
-function make_labels( candidates, dest )
+function make_labels( candidates, src, dest )
     labels = []
-    for n in dest
+    for n in unique(vcat(src,dest))
         i = n % 1000
         push!( labels, candidates[i].sname )             
 
@@ -274,9 +298,12 @@ function make_labels( candidates, dest )
 end
 
 function make_sankey( candidates, votes, transfers, elected, excluded, stages)
-    src, dest, weights = 
-    p = sankey( src, dest, weights )
-
+    # src, dest, weights = 
+    p = sankey( src, dest, weights; 
+        node_labels=labels, 
+        edge_color=:gradient, 
+        label_position=:below, 
+        label_size=6 )
     return p
 end
 

@@ -20,6 +20,23 @@ mutable struct Candidate
     party :: String
 end
 
+const COLOURS = Dict([
+    "SNP" => "#fef279",
+    "CON" => "#0a3b7c",
+    "LAB" => "#eb0045",
+    "LIB" => "#faa01a",
+    "ALB" => "#005eb8",
+    "GRN" => "#43b02a" ])
+
+const OTHCOL = palette([:purple, :pink], 22)
+
+function get_colour( party )
+    if haskey( COLOURS, party )
+        return COLOURS[party]
+    end
+    return OTHCOL[rand(1:length(OTHCOL))]
+end
+
 """
 Henry Droop’s quota - which is “(total votes / (total seats + 1)) + 1”.
 """
@@ -292,14 +309,25 @@ function make_labels( lookup, src, dest )
     labels 
 end
 
+function make_colours( lookup, src ) 
+    cols = []
+    for s in src
+        p = lookup( s )
+        push!( cols, get_colour( p.party ))
+    end
+    return p
+end
+
 function make_sankey( candidates, votes, transfers, elected, excluded, stages)
     # src, dest, weights = 
     src,dest,weights,dict = make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
     labels = make_labels( dict, src, dest )
+    colours = make_colours( dict, src )
     p = sankey( src, dest, weights; 
         node_labels=labels, 
         edge_color=:gradient, 
         label_position=:below, 
+        node_colors = colours,
         label_size=6 )
     return p
 end

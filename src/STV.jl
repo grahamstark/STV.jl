@@ -233,65 +233,60 @@ end
 function make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
     src = []
     dest = []
-
+    weights = []
+    lookup = Dict()
 
     function addone( donor::Int, donee::Int, stage::Int )
-        m = stage * 1000
-        push!( src, donor + m )
-        push!( dest, donee + m + 1000 )
+        lookup[(stage,candidates[donor].sname)] = [candidates[donor].party,elected[donor,stage],excluded[donor,stage]]
+        lookup[(stage+1,candidates[donee].sname)] = [candidates[donee].party,elected[donee,stage],excluded[donee,stage]]
+        
+        push!( src, (stage,candidates[donor].sname) ) #,candidates[donor].party,elected[donor,stage],excluded[donor,stage]])
+        push!( dest,(stage+1,candidates[donee].sname) ) #candidates[donee].party,elected[donee,stage],excluded[donee,stage]])
+        # weight - 
+        if donor == donee
+            push!( weights, votes[donee,stage])
+        else
+            push!( weights, transfers[donor,donee,stage+1])
+        end
     end
-    
-
-    weights = []
-    ncs = size( candidates)[1]
+ 
+    ncs = size( candidates )[1]
     ex = elected .| excluded
-    nleft = ncs
-
     for stage in 1:stages
-        for cno in 1:ncs
+        for cno in 1:ncs 
             if excluded[cno,stage] || elected[cno,stage] # distribute votes of cand
                 for dno in 1:ncs  
-                    if ! any(excluded[dno,1:stage+1])
-                        addone(cno,dno,stage) 
+                    println( "donating to $dno")
+                    if ! (any(ex[dno,1:stage-1])||excluded[dno,stage]) # not aleady excluded or elected on previous stage
+                        println("adding to dno stage $stage")
+                        addone( cno, dno, stage ) 
                     end
                 end
             else
-            
-                if ! any(excluded[cno,1:stage]) # this candidate carries on..
+                if ! any(excluded[cno,1:stage]) # this candidate carries on..    
                     addone( cno, cno, stage )
                 end 
             end
-                #=
-                if s < stages-1
-                    nleft -= 1 
-
-                    nl = elected[i,s] ? nleft+1 : nleft
-                    kk = fill( m+i, nl )
-                    push!( src, kk... )
-                    println( "stage=$s; left=$(nleft) kk = $kk")
-                    for j in 1:nc # add targets 
-                         # still there next time
-                            push!( dest, j+m+1000 )
-                        end
-                    end
-                end
-                =#
-            #elseif ! any( excluded[i,1:s] )
-                # push!( src, i+m  )#+m )
-                # push!( dest, i+m+1000 )# +m+1000 )
-      #      end
         end # candidates
     end # stages
     @assert size( src ) == size( dest )
-    weights = ones( size( src ))
-    return src, dest, weights
+    # weights = ones( size( src ))
+    return src, dest, weights, lookup
 end
 
-function make_labels( candidates, src, dest )
+function make_labels( lookup, src, dest )
     labels = []
+
     for n in unique(vcat(src,dest))
-        i = n % 1000
-        push!( labels, candidates[i].sname )             
+        # s = split(n,":")
+        # i = n % 1000
+        l = lookup[n]
+        #println(l)
+        elec = l[2] ? "\nElected stage $(n[1])" : ""
+        elim = l[3] ? "\nEliminated stage $(n[1])" : ""
+        l = "$(n[2])$elec$elim"
+            
+        push!( labels, l )             
 
     end
     labels 
@@ -299,6 +294,8 @@ end
 
 function make_sankey( candidates, votes, transfers, elected, excluded, stages)
     # src, dest, weights = 
+    src,dest,weights,dict = make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
+    labels = make_labels( dict, src, dest )
     p = sankey( src, dest, weights; 
         node_labels=labels, 
         edge_color=:gradient, 

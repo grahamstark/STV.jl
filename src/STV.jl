@@ -220,7 +220,7 @@ function do_election( fname :: String ) :: Tuple
             if votes[c,stage] > quota
                 elected[c,stage] = true
                 some_elected = true
-                prop = round((votes[c,stage]-quota)/votes[c,stage]); digits=5)
+                prop = round((votes[c,stage]-quota)/votes[c,stage]; digits=5)
                 println( "candidate $c elected! prop = $prop stage=$stage votes=$(votes[c,stage])")
                 ignored = all_unelectable( elected, excluded )
                 stage += 1

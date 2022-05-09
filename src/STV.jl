@@ -8,6 +8,7 @@ module STV
 using SankeyPlots
 using XLSX
 using DataFrames
+using Plots
 
 MAX_STAGES = 50
 
@@ -20,17 +21,21 @@ mutable struct Candidate
     party :: String
 end
 
+function rgb( r,g,b ) :: RGBA
+    return RGBA( r/256, g/256, b/256, 1 )
+end
+
 const COLOURS = Dict([
-    "SNP" => "#fef279",
-    "CON" => "#0a3b7c",
-    "LAB" => "#eb0045",
-    "LIB" => "#faa01a",
-    "ALB" => "#005eb8",
-    "GRN" => "#43b02a" ])
+    "SNP" => rgb(254, 242, 121), #"#fef279", 
+    "CON" => rgb(10, 59, 124),# "#0a3b7c", 
+    "LAB" => rgb( 253, 0, 69 ), 
+    "LIB" => rgb(250, 160, 26 ),
+    "ALB" => rgb(0, 94, 184 ),
+    "GRN" => rgb(67, 176, 42 )])
 
 const OTHCOL = palette([:purple, :pink], 22)
 
-function get_colour( party )
+function get_colour( party :: String )
     if haskey( COLOURS, party )
         return COLOURS[party]
     end
@@ -88,8 +93,8 @@ function load_profiles( filename :: String ) :: NamedTuple
     n = 0
     for r in num_profiles+3:num_raw_rows-1
         n += 1
-        name = split( raw[r,1], " ")
-        c = Candidate( n, name[2], name[1], "DK")
+        name = split( raw[r,1], r" +")
+        c = Candidate( n, name[2], name[1], name[3] )
         push!( candidates, c )
     end
     println( "num_candidates=$num_candidates num_seats=$num_seats candidates=$candidates")
@@ -216,9 +221,10 @@ function do_election( fname :: String ) :: Tuple
                 println( "candidate $c elected! prop = $prop stage=$stage votes=$(votes[c,stage])")
                 ignored = all_unelectable( elected, excluded )
                 stage += 1
-                distribute!( votes, transfers, profiles, prop, counts, c, num_candidates, ignored, stage )
                 votes[c,stage] = quota
-            end
+                distribute!( votes, transfers, profiles, prop, counts, c, num_candidates, ignored, stage )
+                #votes[c,stage-1] = quota
+             end
         end
         println( "elected = $elected")
         println( "excluded = $excluded")
@@ -233,18 +239,37 @@ function do_election( fname :: String ) :: Tuple
             println( "candidate $lowest excluded prop=$(prop)")
             stage += 1                
             distribute!( votes, transfers, profiles, prop, counts, lowest, num_candidates, ignored, stage )
-            votes[lowest,stage] = 0.0
+            # votes[lowest,stage-1] = 0.0
         end
         if sum( elected ) == seats
             break
         end
     end
-    all_elected = sum( elected )
-    println( "all_elected = $all_elected")
+    ls = stage-1
+    # FIXME SHOULDN'T NEED THIS - last stage we really need
+    #=
+    for s in 1:stage
+        te = sum( elected[:,1:s] )
+        println( "ls=$te")
+        if te == seats
+            ls = s
+            break
+        end
+    end
+    =#
+    # fixme nor should THIS
+    for s in 1:stage
+        for c in 1:num_candidates
+            if elected[c,s]
+                votes[c,s+1:stage] .= quota
+            end
+        end
+    end
+    println( "all_elected = $ls")
     println( elected )
-    @assert all_elected == seats
+    # @assert all_elected == seats
     # @assert (sum( elected ) + sum( excluded )) == num_candidates
-    return candidates,wardname,quota,votes[:,1:stage],transfers[:,:,1:stage],elected[:,1:stage],excluded[:,1:stage],seats,stage
+    return candidates,wardname,quota,votes[:,1:ls],transfers[:,:,1:ls],elected[:,1:ls],excluded[:,1:ls],seats,ls
 end
 
 function make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
@@ -254,8 +279,8 @@ function make_src_dest_weights( candidates, votes, transfers, elected, excluded,
     lookup = Dict()
 
     function addone( donor::Int, donee::Int, stage::Int )
-        lookup[(stage,candidates[donor].sname)] = [candidates[donor].party,elected[donor,stage],excluded[donor,stage]]
-        lookup[(stage+1,candidates[donee].sname)] = [candidates[donee].party,elected[donee,stage],excluded[donee,stage]]
+        lookup[(stage,candidates[donor].sname)] = [candidates[donor].party,elected[donor,stage],excluded[donor,stage],votes[donor,stage]]
+        lookup[(stage+1,candidates[donee].sname)] = [candidates[donee].party,elected[donee,stage],excluded[donee,stage],votes[donee,stage]]
         
         push!( src, (stage,candidates[donor].sname) ) #,candidates[donor].party,elected[donor,stage],excluded[donor,stage]])
         push!( dest,(stage+1,candidates[donee].sname) ) #candidates[donee].party,elected[donee,stage],excluded[donee,stage]])
@@ -288,12 +313,12 @@ function make_src_dest_weights( candidates, votes, transfers, elected, excluded,
     end # stages
     @assert size( src ) == size( dest )
     # weights = ones( size( src ))
-    return src, dest, weights, lookup
+    return src[1:end], dest[1:end], weights[1:end], lookup
 end
 
-function make_labels( lookup, src, dest )
+function make_labels( lookup::Dict, src::Vector, dest::Vector )::Tuple
     labels = []
-
+    cols = []
     for n in unique(vcat(src,dest))
         # s = split(n,":")
         # i = n % 1000
@@ -301,34 +326,39 @@ function make_labels( lookup, src, dest )
         #println(l)
         elec = l[2] ? "\nElected stage $(n[1])" : ""
         elim = l[3] ? "\nEliminated stage $(n[1])" : ""
-        l = "$(n[2])$elec$elim"
+        votes = Int(round(l[4]))
+        label = "$(n[2])($votes)$elec$elim"
             
-        push!( labels, l )             
+        push!( labels, label )
+        push!( cols, get_colour( l[1]))      
 
     end
-    labels 
+    labels[1:end], cols[1:end]
 end
 
-function make_colours( lookup, src ) 
+#=
+function make_colours( lookup::Dict, src::Vector )::Vector
     cols = []
     for s in src
-        p = lookup( s )
-        push!( cols, get_colour( p.party ))
+        p = lookup[s]
+        println( "s=$s party=$(p[1])")
+        push!( cols, get_colour( p[1]))
     end
-    return p
+    return cols
 end
+=#
 
 function make_sankey( candidates, votes, transfers, elected, excluded, stages)
-    # src, dest, weights = 
     src,dest,weights,dict = make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
-    labels = make_labels( dict, src, dest )
-    colours = make_colours( dict, src )
+    labels, colours = make_labels( dict, src, dest )
+    # colours = make_colours( dict, src )
     p = sankey( src, dest, weights; 
         node_labels=labels, 
         edge_color=:gradient, 
-        label_position=:below, 
+        label_position=:bottom, 
         node_colors = colours,
-        label_size=6 )
+        label_size=3,
+        compact=false )
     return p
 end
 

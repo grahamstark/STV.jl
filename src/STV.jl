@@ -35,6 +35,9 @@ const COLOURS = Dict([
 
 const OTHCOL = palette([:purple, :pink], 22)
 
+#
+# FIXME this gives random colours for the same candidate if not a known one
+#
 function get_colour( party :: String )
     if haskey( COLOURS, party )
         return COLOURS[party]
@@ -336,19 +339,17 @@ function make_labels( lookup::Dict, src::Vector, dest::Vector )::Tuple
     labels[1:end], cols[1:end]
 end
 
-#=
-function make_colours( lookup::Dict, src::Vector )::Vector
-    cols = []
-    for s in src
-        p = lookup[s]
-        println( "s=$s party=$(p[1])")
-        push!( cols, get_colour( p[1]))
-    end
-    return cols
-end
-=#
+"""
 
-function make_sankey( candidates, votes, transfers, elected, excluded, stages)
+"""
+function make_sankey( 
+    wardname :: AbstractString, 
+    candidates::Vector, 
+    votes::Matrix, 
+    transfers::AbstractArray, 
+    elected::AbstractArray, 
+    excluded::AbstractArray, 
+    stages::Int )
     src,dest,weights,dict = make_src_dest_weights( candidates, votes, transfers, elected, excluded, stages )
     labels, colours = make_labels( dict, src, dest )
     # colours = make_colours( dict, src )
@@ -358,6 +359,7 @@ function make_sankey( candidates, votes, transfers, elected, excluded, stages)
         label_position=:bottom, 
         node_colors = colours,
         label_size=3,
+        title=wardname,
         compact=false )
     return p
 end

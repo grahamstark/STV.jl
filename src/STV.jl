@@ -192,7 +192,7 @@ function do_election( fname :: String ) :: Tuple
     counts, seats, profiles, candidates, wardname = load_profiles( fname )
     num_candidates = size(candidates)[1]    
     num_profiles = size(profiles)[1]
-    MAX_STAGES = size(profiles)[2]
+    MAX_STAGES = size(profiles)[2]*2
     # println( "num_candidates=$num_candidates num_profiles=$num_profiles MAX_STAGES=$MAX_STAGES seats=$seats")
     transfers = zeros( num_candidates, num_candidates+1, MAX_STAGES ) # FIXME only 1 candidate needed transfers between candidates, one num_candidates x num_candidates for each stage
     votes = zeros( num_candidates, MAX_STAGES ) # votes in each stage
@@ -240,9 +240,9 @@ function do_election( fname :: String ) :: Tuple
             prop = votes[lowest,stage]/votes[lowest,1]
             println( "prop=$prop")
             println( "candidate $lowest excluded prop=$(prop)")
-            stage += 1                
-            distribute!( votes, transfers, profiles, prop, counts, lowest, num_candidates, ignored, stage )
-            # votes[lowest,stage-1] = 0.0
+            stage += 1    
+            votes[lowest,stage-1] = 0.0            
+            distribute!( votes, transfers, profiles, prop, counts, lowest, num_candidates, ignored, stage )            
         end
         if sum( elected ) == seats
             break

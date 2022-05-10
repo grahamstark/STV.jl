@@ -173,7 +173,7 @@ function distribute!(
         cand_num = profiles[n,1]
         if cand_num == changed                        
             donee = find_next_donee( profiles[n,:], ignored ) 
-            donation = counts[n] * prop
+            donation = round(counts[n] * prop, digits=5)
             if (donee > 0)                
                 votes[donee,stage] += donation
                 transfers[cand_num,donee,stage] += donation
@@ -223,8 +223,8 @@ function do_election( fname :: String ) :: Tuple
                 prop = round((votes[c,stage]-quota)/votes[c,stage]; digits=5)
                 println( "candidate $c elected! prop = $prop stage=$stage votes=$(votes[c,stage])")
                 ignored = all_unelectable( elected, excluded )
-                stage += 1
                 votes[c,stage] = quota
+                stage += 1
                 distribute!( votes, transfers, profiles, prop, counts, c, num_candidates, ignored, stage )
                 #votes[c,stage-1] = quota
              end
@@ -237,7 +237,7 @@ function do_election( fname :: String ) :: Tuple
             println( "eliminating $lowest at stage $stage")
             excluded[lowest,stage] = true
             ignored = all_unelectable( elected, excluded )
-            prop = votes[lowest,stage]/votes[lowest,1]
+            prop = 1.0 # votes[lowest,stage]/votes[lowest,1]
             println( "prop=$prop")
             println( "candidate $lowest excluded prop=$(prop)")
             stage += 1    

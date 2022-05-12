@@ -72,6 +72,8 @@ function get_colour( party :: AbstractString )
     return OTHCOL[rand(1:length(OTHCOL))]
 end
 
+f = CSV.File("docs/2022/c1.csv", delim=" ",header=false) |> DataFrame
+
 """
 Henry Droop’s quota - which is “(total votes / (total seats + 1)) + 1”.
 """
@@ -79,10 +81,35 @@ function droop_quota( valid :: Real, seats :: Int ) :: Real
     return Int(trunc(valid/(seats+1))) + 1
 end
 
+function load_profiles_csv( filename :: String ) :: NamedTuple
+    df =  CSV.File(fname, delim=" ",header=false) |> DataFrame
+    num_candidatess = parse.(Int, df[1,1])
+    num_seats = parse.(Int, df[1,2])
+    wardname = strip( df[end,1])
+    numrows, numcols = size( df )
+    p = num_rows - num_candidatess - 1
+    candidates = Array{Candidate}(undef,num_candidatess)
+    cno = 0
+    for i in p:num_rows 
+        cno += 1
+        name = split(df[p,1], " " )
+        party = guess_party(df[p,2])
+        candidates[cono] = Candidate( n, name[1], name[2], party, get_colour(party), 0, [] )
+    end
+    candidates[num_candidatess+1] = Candidate(n+1, "Non-Transferred", "", "UNU", get_colour( "UNU"), 0, [])
+    qouta  = 0
+    return (
+        candidates = candidates, 
+        num_seats = num_seats, 
+        quota = quota,
+        wardname = wardname )
+
+end
+
 """
 load from the gcc profiles files. need to add a party field to candidates
 """
-function load_profiles( filename :: String ) :: NamedTuple
+function load_profiles_excel( filename :: String ) :: NamedTuple
     t = XLSX.readtable( filename, 1, header=false )
     
     raw = DataFrame( t...)

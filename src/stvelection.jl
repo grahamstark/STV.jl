@@ -34,12 +34,14 @@ const OTHCOL = palette([:purple, :pink], 22)
 const ELIMINATED = 1
 const ELECTED = 2
 
+#=
 "CON" "Scottish Conservative and Unionist"=>"LAB",
 "LAB" "Glasgow Labour"=>"LAB"
 "Angela JONES" "Alba Party for independence"=>"ALB"
 "Paul MCCABE" "Scottish National Party (SNP)"=>"SNP"
 "Joe MCCAULEY" "Scottish Liberal Democrats"=>"LIB"
 "Keith WARWICK" "Scottish Greens - Delivering For Our Community"=>"GRN"
+=#
 
 function guess_party( name :: AbstractString ) :: String
     s = uppercase(s)
@@ -58,8 +60,6 @@ function guess_party( name :: AbstractString ) :: String
     # ... and so on
     end
     return ""
-    
-
 end
 
 """

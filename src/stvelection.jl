@@ -34,6 +34,34 @@ const OTHCOL = palette([:purple, :pink], 22)
 const ELIMINATED = 1
 const ELECTED = 2
 
+"CON" "Scottish Conservative and Unionist"=>"LAB",
+"LAB" "Glasgow Labour"=>"LAB"
+"Angela JONES" "Alba Party for independence"=>"ALB"
+"Paul MCCABE" "Scottish National Party (SNP)"=>"SNP"
+"Joe MCCAULEY" "Scottish Liberal Democrats"=>"LIB"
+"Keith WARWICK" "Scottish Greens - Delivering For Our Community"=>"GRN"
+
+function guess_party( name :: AbstractString ) :: String
+    s = uppercase(s)
+    if contains( s, "SNP")
+        return "SNP"
+    elseif contains( s, "ALBA")
+        return "ALBA"
+    elseif contains( s, "GREEN")
+        return "GRN"
+    elseif contains( s, "LIBERAL")
+        return "LIB"
+    elseif contains( s, "LABOUR")
+        return "LAB"
+    elseif contains( s, "CONSERVATIVE")
+        return "CON"
+    # ... and so on
+    end
+    return ""
+    
+
+end
+
 """
 colour of a party, or a random colour if I don't know it.
 """

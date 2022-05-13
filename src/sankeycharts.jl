@@ -17,12 +17,15 @@ function make_src_dest_weights( candidates, votes, elected, excluded, stages )
         push!( dest,(stage+1,candidates[donee].sname) ) #candidates[donee].party,elected[donee,stage],excluded[donee,stage]])
         # weight - 
         println("addone: stage $stage donor $donor donee $donee")
-        if donor == donee
-            push!( weights, votes[donee,stage])
-        else #if stage < stages
-            push!( weights, votes[donee,stage+1]-votes[donee,stage])
-        #else
-         #   push!( weights, votes[donee,stage] ) # ???
+        # push!( weights, votes[donee,stage])
+        if stage == 1
+            push!( weights, votes[donee,stage] ) 
+        else 
+            delta = votes[donee,stage+1]-votes[donee,stage]
+            if donee == donor
+                delta = max(0.0, delta)
+            end
+            push!( weights, delta )
         end
     end
  

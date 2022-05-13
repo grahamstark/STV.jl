@@ -75,7 +75,6 @@ function get_colour( party :: AbstractString )
     return OTHCOL[rand(1:length(OTHCOL))]
 end
 
-f = CSV.File("docs/2022/c1.csv", delim=" ",header=false) |> DataFrame
 
 """
 Henry Droop’s quota - which is “(total votes / (total seats + 1)) + 1”.
@@ -299,13 +298,17 @@ end
 
 function n_highest( candidates :: Vector{Candidate}, n :: Int ) AbstractVector{Int}
     nc = size(candidates)[1] - 1 # allow for 
-    a = zeros(2,nc)
+    a = []
+    c = 0
     for i in 1:nc
-        a[1,i] = i
-        a[2,i] = votes(candidates[i])
+        if candidates[i].fate == 0
+            push!(a, (countvotes(candidates[i]),i) )
+        end
     end
-    sort!(a,dims=2)
-    return Int.(a[1,1:n])
+    
+    println(a)
+    sort!(a,rev=true)
+    return a
 end
 
 """
@@ -326,9 +329,9 @@ function do_election!(
     nelect = 0
     lastcol = 0
     # +1s here allow for unused votes (row) and possible extra round if too few elected (col)
-    votes = zeros(num_candidates+1, num_candidates+1)
-    elected = fill( false, num_candidates+1, num_candidates+1)
-    excluded = fill( false, num_candidates+1, num_candidates+1)
+    votes = zeros(num_candidates+1, num_candidates+2)
+    elected = fill( false, num_candidates+1, num_candidates+2)
+    excluded = fill( false, num_candidates+1, num_candidates+2)
     for stage in 1:num_candidates+1
         elected_this_stage = []
         for cand in 1:num_candidates
@@ -339,6 +342,7 @@ function do_election!(
                 push!( elected_this_stage, cand )
             end
         end
+        num_available = num_candidates - sum( elected ) - sum( excluded )
         if stage <= num_candidates 
             if size( elected_this_stage)[1] > 0
                 for e in elected_this_stage # 2 passes needed
@@ -352,11 +356,11 @@ function do_election!(
                     println( "elected $e $(elect.sname) with $tv votes stage $stage prop=$w")
                     transfer!( candidates, elect, w )
                 end
-            else
+            elseif num_available > 2 # hacky, but we don't want to eliminate last stage 
                 l = lowest( candidates )
                 excluded[l,stage] = true
                 elim = candidates[l]
-                println( "eliminating $(elim.sname)")
+                println( "stage $stage num_candidates $num_candidates eliminating $(elim.sname)")
                 transfer!( candidates, elim, 1.0 )
                 elim.fate = ELIMINATED
             end
@@ -370,10 +374,25 @@ function do_election!(
             if n > 0
                 lastcol = stage
                 toelect = n_highest( candidates, n )
+                for t in 1:size(toelect)[1]
+                    e = toelect[t][2]
+                    println( "toelect[$t] = $(toelect[t])")
+                    if t <= n
+                        candidates[e].fate = ELECTED
+                        elected[e,stage] = true
+                        println( "final stage; elected $(candidates[e].sname)")
+                    else
+                        candidates[e].fate = ELIMINATED
+                        excluded[e,stage] = true
+                        println( "final stage; eliminating $(candidates[e].sname)")
+                    end
+                end
+                #=
                 for e in toelect
                     candidates[e].fate = ELECTED
                     elected[e,stage] = true
                 end
+                =#
             end
         end # last stage
         # unused votes

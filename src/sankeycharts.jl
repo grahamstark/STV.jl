@@ -78,7 +78,7 @@ function make_sankey(
     elected::AbstractArray, 
     excluded::AbstractArray, 
     stages::Int )
-    src,dest,weights,dict = make_src_dest_weights( candidates[1:end-1], votes[1:end-1,:], elected[1:end-1,:], excluded[1:end-1,:], stages )
+    src,dest,weights,dict = make_src_dest_weights( candidates[1:stages], votes[1:stages,:], elected[1:stages,:], excluded[1:stages,:], stages )
     labels, colours = make_labels( dict, src, dest )
     # colours = make_colours( dict, src )
     p = sankey( src, dest, weights; 

@@ -43,8 +43,11 @@ const ELECTED = 2
 "Keith WARWICK" "Scottish Greens - Delivering For Our Community"=>"GRN"
 =#
 
-function guess_party( name :: AbstractString ) :: String
-    s = uppercase(s)
+function guess_party( name :: Union{AbstractString,Missing} ) :: String
+    if ismissing(name)
+        return ""
+    end
+    s = uppercase(name)
     if contains( s, "SNP")
         return "SNP"
     elseif contains( s, "ALBA")
@@ -82,22 +85,46 @@ function droop_quota( valid :: Real, seats :: Int ) :: Real
 end
 
 function load_profiles_csv( filename :: String ) :: NamedTuple
-    df =  CSV.File(fname, delim=" ",header=false) |> DataFrame
-    num_candidatess = parse.(Int, df[1,1])
+    df =  CSV.File(filename, delim=" ",header=false) |> DataFrame
+    num_candidates = parse.(Int, df[1,1])
     num_seats = parse.(Int, df[1,2])
     wardname = strip( df[end,1])
-    numrows, numcols = size( df )
-    p = num_rows - num_candidatess - 1
-    candidates = Array{Candidate}(undef,num_candidatess)
+    num_rows, num_cols = size( df )
+    p = num_rows - num_candidates
+    candidates = Array{Candidate}(undef,num_candidates+1)
     cno = 0
-    for i in p:num_rows 
+    for i in p:num_rows-1 
         cno += 1
-        name = split(df[p,1], " " )
-        party = guess_party(df[p,2])
-        candidates[cono] = Candidate( n, name[1], name[2], party, get_colour(party), 0, [] )
+        name = split(df[i,1], " " )
+        println(df[i,1])
+        println("on name $name")
+        party = guess_party(df[i,2])
+        candidates[cno] = Candidate( 
+            cno, name[2], name[1], party, get_colour(party), 0, [] )
     end
-    candidates[num_candidatess+1] = Candidate(n+1, "Non-Transferred", "", "UNU", get_colour( "UNU"), 0, [])
-    qouta  = 0
+    last_profile = num_rows - num_candidates - 2
+    for r in 2:last_profile
+        w = parse( Float64, df[r,1])
+        p = parse( Int, df[r,2])
+        prf = [p]
+        println( w )
+        for c in 3:num_candidates+1
+            if df[r,c] == 0
+                break
+            end
+            push!( prf, df[r,c])
+        end
+        push!( candidates[p].votes, Vote(w,prf))
+    end
+    candidates[num_candidates+1] = Candidate(num_candidates+1, "Non-Transferred", "", "UNU", get_colour( "UNU"), 0, [])
+    num_votes = 0
+    for c in candidates
+        for v in c.votes
+            num_votes += v.weight
+        end
+    end
+    println( "votes $num_votes")
+    quota  = droop_quota(num_votes, num_seats)
     return (
         candidates = candidates, 
         num_seats = num_seats, 
@@ -297,7 +324,7 @@ function do_election!(
     quota :: Real ) :: Tuple
     num_candidates = size(candidates)[1]-1
     nelect = 0
-    lastcol = num_candidates
+    lastcol = 0
     # +1s here allow for unused votes (row) and possible extra round if too few elected (col)
     votes = zeros(num_candidates+1, num_candidates+1)
     elected = fill( false, num_candidates+1, num_candidates+1)
@@ -314,12 +341,14 @@ function do_election!(
         end
         if stage <= num_candidates 
             if size( elected_this_stage)[1] > 0
+                for e in elected_this_stage # 2 passes needed
+                    elected[e,stage] = true
+                    candidates[e].fate = ELECTED
+                end
                 for e in elected_this_stage
                     elect = candidates[e]
-                    elect.fate = ELECTED
                     tv = countvotes(candidates[e])
-                    w = (tv-quota)/tv
-                    elected[e,stage] = true
+                    w = (tv-quota)/tv    
                     println( "elected $e $(elect.sname) with $tv votes stage $stage prop=$w")
                     transfer!( candidates, elect, w )
                 end
@@ -332,6 +361,7 @@ function do_election!(
                 elim.fate = ELIMINATED
             end
             nelect = n_elected( candidates )
+            lastcol += 1
             if nelect == seats
                 break
             end
@@ -351,8 +381,12 @@ function do_election!(
     end # stages
     @assert sum(elected) == seats
     @assert sum(elected)+sum(excluded) == num_candidates # ignoring 'unused vote'
+    for i in 1:lastcol
+        ss = sum(votes[:,i])
+        println( "votes[$i] = $ss")
+    end
     @assert all((sum(votes[:,i]) ≈ sum(votes[:,1])) for i = 1:lastcol) # total votes constant over stages
-    return candidates,votes[:,1:lastcol],elected[:,1:lastcol],excluded[:,1:lastcol]
+    return candidates,lastcol,votes[:,1:lastcol],elected[:,1:lastcol],excluded[:,1:lastcol]
 end
 
 

@@ -395,7 +395,7 @@ function do_election!(
             end
         end 
         for c in 1:num_candidates+1 # final count
-            votes[c,lastcol] = countvotes(candidates[end])
+            votes[c,lastcol] = countvotes(candidates[c])
         end
         # unused votes
     end # optional last stage

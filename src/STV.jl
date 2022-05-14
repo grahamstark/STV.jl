@@ -10,6 +10,7 @@ using XLSX
 using DataFrames
 using Plots
 using CSV
+using PrettyTables
 
 export do_election!,make_labels,make_sankey
 

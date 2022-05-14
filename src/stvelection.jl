@@ -99,7 +99,7 @@ function load_profiles_csv( filename :: String ) :: NamedTuple
         println("on name $name")
         party = guess_party(df[i,2])
         candidates[cno] = Candidate( 
-            cno, name[2], name[1], party, get_colour(party), 0, [] )
+            cno, name[end], name[1], party, get_colour(party), 0, [] )
     end
     last_profile = num_rows - num_candidates - 2
     for r in 2:last_profile
@@ -227,7 +227,7 @@ end
 Transfers the votes of candidate `to` to other candidates `from`, the last of
 which is a dummy 'untransferred votes' candidate.
 """
-function transfer!( to :: Vector{Candidate}, from :: Candidate, weight :: Real )
+function transfer!( to :: Vector{Candidate}, from :: Candidate, transfers::AbstractMatrix, weight :: Real )
     
     function nextdonee!(v :: Vote)
         # println("f on entry $(v.prefs)")
@@ -260,10 +260,13 @@ function transfer!( to :: Vector{Candidate}, from :: Candidate, weight :: Real )
             if to[i].fate == 0
                 @assert i != from.pos "i=$i pos=$(from.pos)"
                 push!(to[i].votes, cv )
+                transfers[from.pos,to[i].pos] += cv.weight
             else # unused vote
                 push!( to[end].votes, cv2 )    
+                transfers[from.pos,to[end].pos] += cv2.weight
             end
         else # unused vote to unused votes party
+            transfers[from.pos,to[end].pos] += cv2.weight
             push!( to[end].votes, cv2 )
         end
     end
@@ -328,84 +331,85 @@ function do_election!(
     num_candidates = size(candidates)[1]-1
     nelect = 0
     lastcol = 0
+    max_stages = num_candidates + 1 # allow extra stage in case not enough elected
+
     # +1s here allow for unused votes (row) and possible extra round if too few elected (col)
-    votes = zeros(num_candidates+1, num_candidates+2)
-    elected = fill( false, num_candidates+1, num_candidates+2)
-    excluded = fill( false, num_candidates+1, num_candidates+2)
-    for stage in 1:num_candidates+1
+    votes = zeros(num_candidates+1, max_stages)
+    elected = fill( false, num_candidates+1, max_stages)
+    excluded = fill( false, num_candidates+1, max_stages)
+    transfers = zeros( num_candidates+1, num_candidates+1, max_stages ) # FIXME only 1 candidate needed transfers between candidates, one num_candidates x num_candidates for each stage
+    for stage in 1:max_stages-1
         elected_this_stage = []
+        lastcol = stage
         for cand in 1:num_candidates
             tv = countvotes(candidates[cand])
             votes[cand,stage] = tv
             println( "can $cand votes $tv quota $quota")
             if tv > quota
                 push!( elected_this_stage, cand )
+                elected[cand,stage] = true
+                candidates[cand].fate = ELECTED
             end
         end
         num_available = num_candidates - sum( elected ) - sum( excluded )
-        if stage <= num_candidates 
-            if size( elected_this_stage)[1] > 0
-                for e in elected_this_stage # 2 passes needed
-                    elected[e,stage] = true
-                    candidates[e].fate = ELECTED
-                end
-                for e in elected_this_stage
-                    elect = candidates[e]
-                    tv = countvotes(candidates[e])
-                    w = (tv-quota)/tv    
-                    println( "elected $e $(elect.sname) with $tv votes stage $stage prop=$w")
-                    transfer!( candidates, elect, w )
-                end
-            elseif num_available > 2 # hacky, but we don't want to eliminate last stage 
-                l = lowest( candidates )
-                excluded[l,stage] = true
-                elim = candidates[l]
-                println( "stage $stage num_candidates $num_candidates eliminating $(elim.sname)")
-                transfer!( candidates, elim, 1.0 )
-                elim.fate = ELIMINATED
+        println( "stage $stage num_available=$num_available")
+        if size( elected_this_stage)[1] > 0
+            for e in elected_this_stage
+                elect = candidates[e]
+                tv = countvotes(elect)
+                w = (tv-quota)/tv    
+                println( "elected $e $(elect.sname) with $tv votes stage $stage prop=$w")
+                transfer!( candidates, elect, view(transfers,:,:,stage+1), w )
             end
-            nelect = n_elected( candidates )
-            lastcol += 1
-            if nelect == seats
-                break
-            end
-        else # possible last stage - add extra elected if < available seats
-            n = seats - nelect
-            if n > 0
-                lastcol = stage
-                toelect = n_highest( candidates, n )
-                for t in 1:size(toelect)[1]
-                    e = toelect[t][2]
-                    println( "toelect[$t] = $(toelect[t])")
-                    if t <= n
-                        candidates[e].fate = ELECTED
-                        elected[e,stage] = true
-                        println( "final stage; elected $(candidates[e].sname)")
-                    else
-                        candidates[e].fate = ELIMINATED
-                        excluded[e,stage] = true
-                        println( "final stage; eliminating $(candidates[e].sname)")
-                    end
-                end
-                #=
-                for e in toelect
-                    candidates[e].fate = ELECTED
-                    elected[e,stage] = true
-                end
-                =#
-            end
-        end # last stage
-        # unused votes
+        elseif num_available > 1 # hacky, but we don't want to eliminate last stage 
+            l = lowest( candidates )
+            excluded[l,stage] = true
+            elim = candidates[l]
+            println( "stage $stage num_candidates $num_candidates eliminating $(elim.sname)")
+            transfer!( candidates, elim, view(transfers,:,:,stage+1), 1.0 )
+            elim.fate = ELIMINATED
+        end
+        nelect = n_elected( candidates )
+        if nelect == seats
+            break
+        end
         votes[end,stage+1] = countvotes(candidates[end])
-    end # stages
+   end
+    n = seats - nelect
+    if n > 0 # check for unallocated seats
+        #FIXME this is not how last thing is expressed - see langside last
+        lastcol += 1
+        toelect = n_highest( candidates, n )
+        tl = size(toelect)[1]
+        for t in 1:tl
+            e = toelect[t][2]
+            println( "toelect[$t] = $(toelect[t])")
+            if t <= n
+                candidates[e].fate = ELECTED
+                elected[e,max_stages] = true
+                println( "final stage; elected $(candidates[e].sname)")
+            else
+                candidates[e].fate = ELIMINATED
+                excluded[e,max_stages] = true
+                println( "final stage; eliminating $(candidates[e].sname)")
+            end
+        end 
+        for c in 1:num_candidates+1 # final count
+            votes[c,lastcol] = countvotes(candidates[end])
+        end
+        # unused votes
+    end # optional last stage
+    PrettyTables.pretty_table( votes )
     @assert sum(elected) == seats
     @assert sum(elected)+sum(excluded) == num_candidates # ignoring 'unused vote'
     for i in 1:lastcol
         ss = sum(votes[:,i])
         println( "votes[$i] = $ss")
     end
-    @assert all((sum(votes[:,i]) ≈ sum(votes[:,1])) for i = 1:lastcol) # total votes constant over stages
-    return candidates,lastcol,votes[:,1:lastcol],elected[:,1:lastcol],excluded[:,1:lastcol]
+    lastcheck = min(lastcol,num_candidates)
+    @assert all((sum(votes[:,i]) ≈ sum(votes[:,1])) for i = 1:lastcheck) # total votes constant over stages
+    # return candidates,lastcol,votes[:,1:lastcol],elected[:,1:lastcol],excluded[:,1:lastcol], transfers
+    return candidates, lastcol, votes, elected, excluded, transfers
 end
 
 

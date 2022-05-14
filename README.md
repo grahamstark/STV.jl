@@ -6,7 +6,7 @@ Simple implmentation of [Single Transferrable Vote](), as used in Glasgow, using
 
 See [here](https://glasgow.gov.uk/index.aspx?articleid=21080) for the 2007 data.
 
-![Auldburn 2017 Sankey](diagrams/ward2.svg)
+![Langside 2022 Sankey](diagrams/langside.svg)
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://grahamstark.github.io/STV.jl/stable)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://grahamstark.github.io/STV.jl/dev)

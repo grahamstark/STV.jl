@@ -12,6 +12,7 @@ mutable struct Candidate
     party  :: String
     colour :: RGBA
     fate   :: Int
+    stage  :: Int
     votes  :: Array{Vote}
 end
 
@@ -51,7 +52,7 @@ function guess_party( name :: Union{AbstractString,Missing} ) :: String
     if contains( s, "SNP")
         return "SNP"
     elseif contains( s, "ALBA")
-        return "ALBA"
+        return "ALB"
     elseif contains( s, "GREEN")
         return "GRN"
     elseif contains( s, "LIBERAL")
@@ -99,7 +100,7 @@ function load_profiles_csv( filename :: String ) :: NamedTuple
         println("on name $name")
         party = guess_party(df[i,2])
         candidates[cno] = Candidate( 
-            cno, name[end], name[1], party, get_colour(party), 0, [] )
+            cno, name[end], name[1], party, get_colour(party), 0, 0, [] )
     end
     last_profile = num_rows - num_candidates - 2
     for r in 2:last_profile
@@ -115,7 +116,7 @@ function load_profiles_csv( filename :: String ) :: NamedTuple
         end
         push!( candidates[p].votes, Vote(w,prf))
     end
-    candidates[num_candidates+1] = Candidate(num_candidates+1, "Non-Transferred", "", "UNU", get_colour( "UNU"), 0, [])
+    candidates[num_candidates+1] = Candidate(num_candidates+1, "Non-Transferred", "", "UNU", get_colour( "UNU"), 0, 0, [])
     num_votes = 0
     for c in candidates
         for v in c.votes
@@ -230,7 +231,7 @@ which is a dummy 'untransferred votes' candidate.
 function transfer!( to :: Vector{Candidate}, from :: Candidate, transfers::AbstractMatrix, weight :: Real )
     
     function nextdonee!(v :: Vote)
-        # println("f on entry $(v.prefs)")
+        # println("f on entry $(v.prefs)"). 
         n = size(v.prefs)[1]
         f = 0
         for i in 2:n            
@@ -257,7 +258,7 @@ function transfer!( to :: Vector{Candidate}, from :: Candidate, transfers::Abstr
         nextdonee!(cv)
         if length(cv.prefs) > 0
             i = cv.prefs[1]
-            if to[i].fate == 0
+            if to[i].fate == 0 
                 @assert i != from.pos "i=$i pos=$(from.pos)"
                 push!(to[i].votes, cv )
                 transfers[from.pos,to[i].pos] += cv.weight
@@ -288,15 +289,25 @@ function lowest( candidates :: Vector{Candidate})::Int
     return pos
 end
 
-function n_elected( candidates :: Vector{Candidate})::Int
+
+
+function count( candidates :: Vector{Candidate}, state :: Int)::Int
     n = 0
     nc = size(candidates)[1] - 1 # allow for 
     for i in 1:nc
-        if candidates[i].fate == ELECTED
+        if candidates[i].fate == state
             n += 1
         end
     end
     return n
+end
+
+function n_elected( candidates :: Vector{Candidate})::Int
+    count( candidates, ELECTED)
+end
+
+function n_excluded( candidates :: Vector{Candidate})::Int
+    count( candidates, ELIMINATED )
 end
 
 function n_highest( candidates :: Vector{Candidate}, n :: Int ) AbstractVector{Int}
@@ -330,6 +341,7 @@ function do_election!(
     quota :: Real ) :: Tuple
     num_candidates = size(candidates)[1]-1
     nelect = 0
+    nexcluded = 0
     lastcol = 0
     max_stages = num_candidates + 1 # allow extra stage in case not enough elected
 
@@ -349,6 +361,7 @@ function do_election!(
                 push!( elected_this_stage, cand )
                 elected[cand,stage] = true
                 candidates[cand].fate = ELECTED
+                candidates[cand].stage = stage
             end
         end
         num_available = num_candidates - sum( elected ) - sum( excluded )
@@ -360,6 +373,14 @@ function do_election!(
                 w = (tv-quota)/tv    
                 println( "elected $e $(elect.sname) with $tv votes stage $stage prop=$w")
                 transfer!( candidates, elect, view(transfers,:,:,stage+1), w )
+                # fixme hack see pollock stage 2 where 2 elected but 1 transfer needed
+                for k in  1:num_candidates
+                    cc = candidates[k]
+                    if (countvotes(cc) > quota)&&(cc.fate==0)
+                        cc.fate = ELECTED
+                        cc.stage = stage
+                    end
+                end
             end
         elseif num_available > 1 # hacky, but we don't want to eliminate last stage 
             l = lowest( candidates )
@@ -368,14 +389,18 @@ function do_election!(
             println( "stage $stage num_candidates $num_candidates eliminating $(elim.sname)")
             transfer!( candidates, elim, view(transfers,:,:,stage+1), 1.0 )
             elim.fate = ELIMINATED
+            elim.stage = stage
         end
         nelect = n_elected( candidates )
+        nexcluded = n_excluded( candidates )
+        pretty_table( transfers[:,:,stage+1])
         if nelect == seats
             break
         end
         votes[end,stage+1] = countvotes(candidates[end])
    end
     n = seats - nelect
+    println( "num_candidates $num_candidates  (nelect $nelect nexcluded $nexcluded")
     if n > 0 # check for unallocated seats
         #FIXME this is not how last thing is expressed - see langside last
         lastcol += 1
@@ -386,11 +411,13 @@ function do_election!(
             println( "toelect[$t] = $(toelect[t])")
             if t <= n
                 candidates[e].fate = ELECTED
-                elected[e,max_stages] = true
+                candidates[e].stage = lastcol
+                elected[e,lastcol] = true
                 println( "final stage; elected $(candidates[e].sname)")
             else
                 candidates[e].fate = ELIMINATED
-                excluded[e,max_stages] = true
+                candidates[e].stage = lastcol
+                excluded[e,lastcol] = true
                 println( "final stage; eliminating $(candidates[e].sname)")
             end
         end 
@@ -398,8 +425,26 @@ function do_election!(
             votes[c,lastcol] = countvotes(candidates[c])
         end
         # unused votes
+    elseif num_candidates > (nelect + nexcluded)
+        lastcol += 1
+        # note sum votes before eliminating last snce nowhere to transfer
+        for c in 1:num_candidates+1 # final count
+            votes[c,lastcol] = countvotes(candidates[c])
+        end
+        for c in 1:num_candidates
+            if candidates[c].fate == 0
+                println("excluding last stage=$lastcol cand=$(candidates[c].pos)")
+                candidates[c].fate = ELIMINATED
+                candidates[c].stage = lastcol
+                excluded[candidates[c].pos,lastcol] = true
+            end
+        end
+
     end # optional last stage
     PrettyTables.pretty_table( votes )
+    PrettyTables.pretty_table( elected )
+    PrettyTables.pretty_table( excluded )
+    
     @assert sum(elected) == seats
     @assert sum(elected)+sum(excluded) == num_candidates # ignoring 'unused vote'
     for i in 1:lastcol

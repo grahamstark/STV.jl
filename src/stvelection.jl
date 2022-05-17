@@ -20,7 +20,9 @@ function rgb( r,g,b ) :: RGBA
     return RGBA( r/256, g/256, b/256, 1 )
 end
 
-# these are colour-picked from party websites FIXME expand this. 
+# these are colour-picked from party websites and
+# https://en.wikipedia.org/wiki/2022_Glasgow_City_Council_election
+# FIXME expand this. #
 const COLOURS = Dict([
     "SNP" => rgb(254, 242, 121), #"#fef279", 
     "CON" => rgb(10, 59, 124),# "#0a3b7c", 
@@ -28,6 +30,12 @@ const COLOURS = Dict([
     "LIB" => rgb(250, 160, 26 ),
     "ALB" => rgb(0, 94, 184 ),
     "GRN" => rgb(67, 176, 42 ),
+    "IND" => rgb( 60, 60, 60 ),
+    "UKIP" => rgb(128, 0, 128),
+    "TUSC" => rgb( 126, 20, 22 ),
+    "FAMILY" => rgb(218, 160, 109),
+    "FREEDOM" => rgb(204, 18, 128 ),
+    "REFORM" => rgb(51, 0, 153),
     "UNU" => rgb(50, 50, 50 )]) # unused vote party in grey...
 
 const OTHCOL = palette([:purple, :pink], 22)
@@ -61,6 +69,23 @@ function guess_party( name :: Union{AbstractString,Missing} ) :: String
         return "LAB"
     elseif contains( s, "CONSERVATIVE")
         return "CON"
+    elseif contains( s, "UKIP")
+        return "UKIP"
+    elseif contains( s, "TRADE UNION")
+        return "TUSC"
+    elseif contains( s, "SOCIALIST")
+        return "SSP"
+    elseif contains( s, "VOLT")
+        return "VOLT"
+    elseif contains( s, "REFORM")
+        return "REFORM"
+    elseif contains( s, "FAMILY PARTY")
+        return "FAMILY"
+    elseif contains( s, "FREEDOM")
+        return "FREEDOM"
+    # ... 
+    elseif s == ""
+        return "IND"
     # ... and so on
     end
     return ""

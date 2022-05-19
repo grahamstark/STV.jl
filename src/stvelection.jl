@@ -30,7 +30,7 @@ const COLOURS = Dict([
     "LIB" => rgb(250, 160, 26 ),
     "ALB" => rgb(0, 94, 184 ),
     "GRN" => rgb(67, 176, 42 ),
-    "IND" => rgb( 60, 60, 60 ),
+    "IND" => rgb( 90, 90, 90 ),
     "UKIP" => rgb(128, 0, 128),
     "TUSC" => rgb( 126, 20, 22 ),
     "FAMILY" => rgb(218, 160, 109),
@@ -54,7 +54,7 @@ const ELECTED = 2
 
 function guess_party( name :: Union{AbstractString,Missing} ) :: String
     if ismissing(name)
-        return ""
+        return "IND"
     end
     s = uppercase(name)
     if contains( s, "SNP")
@@ -84,7 +84,7 @@ function guess_party( name :: Union{AbstractString,Missing} ) :: String
     elseif contains( s, "FREEDOM")
         return "FREEDOM"
     # ... 
-    elseif s == ""
+    elseif s == "" || contains( s, "INDEPENDENT")
         return "IND"
     # ... and so on
     end
@@ -350,6 +350,13 @@ function n_highest( candidates :: Vector{Candidate}, n :: Int ) AbstractVector{I
     return a
 end
 
+function num_available( candidates :: Vector{Candidate})::Int
+    nelect = n_elected( candidates )
+    nexcluded = n_excluded( candidates )
+    num_available = size(candidates)[1] - nelect - nexcluded - 1
+    return num_available
+end
+
 """
 Runs the election, returning `seats` candidates. Modifies candidates in-place as votes are transferred at each stage
 return: 
@@ -364,18 +371,16 @@ function do_election!(
     candidates :: Vector{Candidate}, 
     seats :: Int, 
     quota :: Real ) :: Tuple
-    num_candidates = size(candidates)[1]-1
-    nelect = 0
-    nexcluded = 0
+    num_candidates = size(candidates)[1]-1 # not the 'unused' candidate
     lastcol = 0
-    max_stages = num_candidates + 1 # allow extra stage in case not enough elected
+    max_stages = num_candidates # allow extra stage in case not enough elected
 
     # +1s here allow for unused votes (row) and possible extra round if too few elected (col)
     votes = zeros(num_candidates+1, max_stages)
     transfers = zeros( num_candidates+1, num_candidates+1, max_stages ) # FIXME only 1 candidate needed transfers between candidates, one num_candidates x num_candidates for each stage
-    for stage in 1:max_stages-1
+    for stage in 1:max_stages
         elected_this_stage = []
-        lastcol = stage
+        # lastcol = stage
         for cand in 1:num_candidates
             tv = countvotes(candidates[cand])
             votes[cand,stage] = tv
@@ -386,10 +391,7 @@ function do_election!(
                 candidates[cand].stage = stage
             end
         end
-        nelect = n_elected( candidates )
-        nexcluded = n_excluded( candidates )
-        num_available = num_candidates - nelect - nexcluded
-        println( "stage $stage num_available=$num_available")
+        # println( "stage $stage num_available=$num_available")
         if size( elected_this_stage)[1] > 0
             for e in elected_this_stage
                 elect = candidates[e]
@@ -406,90 +408,47 @@ function do_election!(
                     end
                 end
             end
-        elseif num_available > 1 # hacky, but we don't want to eliminate last stage 
+        elseif num_available( candidates ) > 1 # hacky, but we don't want to eliminate last stage 
             l = lowest( candidates )
             elim = candidates[l]
             println( "stage $stage num_candidates $num_candidates eliminating $(elim.sname)")
             transfer!( candidates, elim, view(transfers,:,:,stage+1), 1.0 )
             elim.fate = ELIMINATED
             elim.stage = stage
+            if num_available( candidates ) == 1
+                for can in candidates
+                    if can.fate == 0
+                        can.fate = ELECTED
+                        can.stage = stage
+                    end
+                end
+            end
         end
         # pretty_table( transfers[:,:,stage+1])
-        if nelect == seats
+        if n_elected( candidates ) == seats
+            println("got enough candidates elected; exiting")
+            lastcol = stage
+            if num_available(candidates) > 0
+                for can in candidates # fixme make a set_remaining function
+                    if can.fate == 0
+                        can.fate = ELIMINATED
+                        can.stage = stage
+                    end   
+                end             
+            end
             break
         end
-        votes[end,stage+1] = countvotes(candidates[end])
+        votes[end,stage+1] = countvotes(candidates[end]) # unused votes
     end # stages
-
-    n = seats - nelect
-    println( "num_candidates $num_candidates  (nelect $nelect nexcluded $nexcluded")
-    if n > 0 # check for unallocated seats
-        #FIXME this is not how last thing is expressed - see langside last
-        lastcol += 1
-        toelect = n_highest( candidates, n )
-        tl = size(toelect)[1]
-        for t in 1:tl
-            e = toelect[t][2]
-            println( "toelect[$t] = $(toelect[t])")
-            if t <= n
-                candidates[e].fate = ELECTED
-                candidates[e].stage = lastcol
-                println( "final stage; elected $(candidates[e].sname)")
-            else
-                candidates[e].fate = ELIMINATED
-                candidates[e].stage = lastcol
-                println( "final stage; eliminating $(candidates[e].sname)")
-            end
-        end 
-        for c in 1:num_candidates+1 # final count
-            votes[c,lastcol] = countvotes(candidates[c])
-        end
-        # unused votes
-    elseif num_candidates > (nelect + nexcluded)
-        lastcol += 1
-        # note sum votes before eliminating last snce nowhere to transfer
-        for c in 1:num_candidates+1 # final count
-            votes[c,lastcol] = countvotes(candidates[c])
-        end
-        for c in 1:num_candidates
-            if candidates[c].fate == 0
-                println("excluding last stage=$lastcol cand=$(candidates[c].pos)")
-                candidates[c].fate = ELIMINATED
-                candidates[c].stage = lastcol
-            end
-        end
-
-    end # optional last stage
-
-    #
-    # aggregate tables for the sankey charts
-    #
-    elected = fill( false, num_candidates+1, lastcol)
-    excluded = fill( false, num_candidates+1, lastcol)
-    for cc in candidates
-        if cc.party != "UNU" # unused votes holder
-            @assert cc.fate != 0 "cand $(cc.pos) $(cc.fname) has zero fate"
-            if cc.fate == ELECTED
-                elected[cc.pos,cc.stage] = true
-            elseif cc.fate == ELIMINATED
-                excluded[cc.pos,cc.stage] = true
-            end
-        end
-    end
-    PrettyTables.pretty_table( votes )
-    PrettyTables.pretty_table( elected )
-    PrettyTables.pretty_table( excluded )
-    
-    @assert sum(elected) == seats
-    @assert sum(elected)+sum(excluded) == num_candidates # ignoring 'unused vote'
+    @assert n_elected( candidates ) == seats
+    @assert num_available( candidates ) == 0 # all elected or eliminated
     for i in 1:lastcol
         ss = sum(votes[:,i])
         println( "votes[$i] = $ss")
     end
-    lastcheck = min(lastcol,num_candidates)
-    @assert all((sum(votes[:,i]) ≈ sum(votes[:,1])) for i = 1:lastcheck) # total votes constant over stages
-    # return candidates,lastcol,votes[:,1:lastcol],elected[:,1:lastcol],excluded[:,1:lastcol], transfers
-    return candidates, lastcol, votes, elected, excluded, transfers
+    @assert all((sum(votes[:,i]) ≈ sum(votes[:,1])) for i = 1:lastcol) # total votes constant over stages
+    return candidates,votes[:,1:lastcol], transfers
+    elected[:,1:lastcol],excluded[:,1:lastcol], transfers
 end
 
 
